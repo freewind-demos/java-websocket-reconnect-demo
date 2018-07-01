@@ -1,10 +1,7 @@
-Java-WebSocket Hello World Demo
+Java-WebSocket Reconnect Demo
 ================================
 
-Java WebSocket hello world example
-
-- Server: `my.Server`
-- Client: `my.Client`
+Reconnect to websocket server when the connection is lost
 
 To show debug information, use `WebSocketImpl.DEBUG = true;` in code.
 

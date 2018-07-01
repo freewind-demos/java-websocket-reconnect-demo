@@ -1,31 +1,88 @@
 package my;
 
-import org.java_websocket.WebSocketImpl;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
-import java.net.URISyntaxException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Client {
 
     public static void main(String[] args) throws Exception {
 //        WebSocketImpl.DEBUG = true;
-        run("ws://localhost:8887");
+        run("wss://api.fcoin.com/v2/ws");
     }
 
-    private static void run(String url) throws URISyntaxException, InterruptedException {
-        WebSocketClient client = new WebSocketClient(new URI(url), new Draft_6455()) {
+    private static MyClient myClient = null;
+
+    private static void run(String url) throws Exception {
+        myClient = new MyClient(new URI(url), true);
+        myClient.run();
+    }
+
+}
+
+class MyClient {
+
+    private ScheduledExecutorService sss = Executors.newSingleThreadScheduledExecutor();
+
+    MyClient(URI uri, boolean autoReconnect) {
+        this.uri = uri;
+        this.autoReconnect = autoReconnect;
+    }
+
+    private final URI uri;
+    private boolean autoReconnect;
+    String message;
+
+
+    void run() {
+        try {
+            connect();
+        } catch (Exception e) {
+            System.out.println(e.toString());
+
+            // NOTICE: should not call `reconnect` here, since this exception (from `connectBlocking`) will trigger `onClose` method
+            // reconnect();
+        }
+    }
+
+    private void reconnect() {
+        if (!autoReconnect) {
+            return;
+        }
+
+        sss.schedule(() -> {
+            System.out.println();
+            System.out.println("### reconnect");
+            System.out.println();
+            MyClient.this.run();
+        }, 3, TimeUnit.SECONDS);
+    }
+
+    private void connect() throws Exception {
+        WebSocketClient client = createClient();
+        client.connectBlocking();
+        client.send("{" +
+                "  \"cmd\": \"sub\", " +
+                "  \"args\": [\"ticker.ftusdt\"]" +
+                "}");
+    }
+
+    private WebSocketClient createClient() {
+        WebSocketClient client = new WebSocketClient(uri, new Draft_6455()) {
             @Override
             public void onOpen(ServerHandshake handshake) {
-                System.out.println("onOpen: " + getURI());
+                System.out.println("onOpen");
             }
 
             @Override
             public void onMessage(String message) {
                 System.out.println("onMessage: " + message);
-                this.send("Hello");
+                MyClient.this.message = message;
             }
 
             @Override
@@ -37,13 +94,11 @@ public class Client {
             @Override
             public void onClose(int code, String reason, boolean remote) {
                 System.out.println(String.format("onClose(code: %s, reason: %s, remote: %s)", code, reason, remote));
+                reconnect();
             }
         };
-        client.connect();
-
-        System.out.println("Will close in 3 seconds");
-        Thread.sleep(3000L);
-        client.close();
+        // If not receive any message from server more than 10s, close the connection
+        client.setConnectionLostTimeout(10);
+        return client;
     }
-
 }
